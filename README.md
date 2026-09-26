@@ -5,6 +5,8 @@ A WebGL Minecraft world viewer and editor, built with React, Three.js and Zustan
 Rendr began in 2024 as a real-time world viewer. In 2026 it was refreshed with
 Rendr Studio, an editing UI built around an AI architect flow.
 
+**Project write-up:** [jais.info/projects/rendr-mc](https://www.jais.info/projects/rendr-mc)
+
 ![Rendr Studio building a lighthouse from a blueprint](docs/media/lighthouse.gif)
 
 ## Rendr Studio
