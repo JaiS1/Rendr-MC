@@ -3,18 +3,36 @@ import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
-import { buildWorld, C, G, SEA } from "./world.js";
-import { PHASES, DUSK, lerp, smooth, range, clamp01 } from "./script.js";
+import { lerp, smooth, range, clamp01 } from "./script.js";
 
-const TYPES = {
+export const TYPES = {
   grass: { top: "grass_block_top", side: "grass_block_side", bottom: "dirt", topTint: "#7fbf55" },
   dirt: { all: "dirt" },
+  coarse_dirt: { all: "coarse_dirt" },
+  podzol: { top: "podzol_top", side: "podzol_side", bottom: "dirt" },
   stone: { all: "stone" },
+  andesite: { all: "andesite" },
+  tuff: { all: "tuff" },
+  gravel: { all: "gravel" },
+  snow: { all: "snow" },
   sand: { all: "sand" },
+  farmland: { top: "farmland_moist", side: "dirt", bottom: "dirt" },
+  water_block: { all: "water_still", tint: "#3f76e4", liquid: true },
   oak_log: { side: "oak_log", top: "oak_log_top" },
   oak_leaves: { all: "oak_leaves", tint: "#77b84f", cutout: true },
+  oak_planks: { all: "oak_planks" },
+  spruce_log: { side: "spruce_log", top: "spruce_log_top" },
+  spruce_leaves: { all: "spruce_leaves", tint: "#5f8f55", cutout: true },
+  stripped_spruce_log: { side: "stripped_spruce_log", top: "spruce_log_top" },
+  hay_block: { side: "hay_block_side", top: "hay_block_top" },
+  barrel: { side: "barrel_side", top: "barrel_top" },
+  bookshelf: { side: "bookshelf", top: "oak_planks" },
   stone_bricks: { all: "stone_bricks" },
+  mossy_cobblestone: { all: "mossy_cobblestone" },
   polished_andesite: { all: "polished_andesite" },
+  polished_deepslate: { all: "polished_deepslate" },
+  deepslate_bricks: { all: "deepslate_bricks" },
+  deepslate_tiles: { all: "deepslate_tiles" },
   white_concrete: { all: "white_concrete" },
   red_concrete: { all: "red_concrete" },
   glass: { all: "glass", cutout: true },
@@ -22,19 +40,22 @@ const TYPES = {
   iron_bars: { all: "iron_bars", cutout: true },
   dark_oak_planks: { all: "dark_oak_planks" },
   spruce_planks: { all: "spruce_planks" },
-  spruce_log: { side: "spruce_log", top: "spruce_log_top" },
   cobblestone: { all: "cobblestone" },
   glowstone: { all: "glowstone", emissive: true },
   sea_lantern: { all: "sea_lantern", emissive: true },
+  shroomlight: { all: "shroomlight", emissive: true },
   path: { top: "dirt_path_top", side: "dirt_path_side", bottom: "dirt", overlay: true },
 };
 const PLANTS = {
   short_grass: "#7fbf55",
+  fern: "#6f9f55",
   poppy: null,
   dandelion: null,
   oxeye_daisy: null,
   cornflower: null,
   allium: null,
+  wheat_stage7: null,
+  carrots_stage3: null,
 };
 
 function loadImage(src) {
@@ -66,17 +87,56 @@ const easeOutBack = (x) => {
   return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2);
 };
 
-export async function createScene(canvas) {
-  const names = new Set(["water_still"]);
+const BUILD_DUR = 0.35;
+const CHUNK_DUR = 0.6;
+const REMOVE_DUR = 0.3;
+const HIDDEN = 0.0001;
+
+// Where an instance sits at time t: appearing (built or streamed in), in place,
+// or being removed. Returns null when it should not be drawn.
+function placeAt(e, t) {
+  if (t < e.t0) return null;
+  let y = e.y + (e.overlay ? 1.04 : 0.5);
+  let s = 1;
+  if (e.mode === "build") {
+    const k = clamp01((t - e.t0) / BUILD_DUR);
+    s = Math.min(1.12, Math.max(HIDDEN, easeOutBack(k)));
+    y += (1 - smooth(k)) * 1.6;
+  } else if (e.mode === "chunk") {
+    const k = clamp01((t - e.t0) / CHUNK_DUR);
+    y -= (1 - smooth(k)) * 5;
+  }
+  if (t >= e.tr) {
+    const k = clamp01((t - e.tr) / REMOVE_DUR);
+    if (k >= 1) return null;
+    s *= 1 - smooth(k);
+    y += smooth(k) * 0.6;
+  }
+  return { y, s };
+}
+
+// An instance only needs a new matrix when t or the previous t touches one
+// of its animation windows, or t has crossed one of them.
+function needsUpdate(e, t, prev) {
+  if (prev == null) return true;
+  const lo = Math.min(t, prev), hi = Math.max(t, prev);
+  const dur = e.mode === "build" ? BUILD_DUR : CHUNK_DUR;
+  const within = (a, b) => hi >= a && lo <= b;
+  return (e.t0 > -Infinity && within(e.t0, e.t0 + dur)) || (e.tr < Infinity && within(e.tr, e.tr + REMOVE_DUR));
+}
+
+export async function createScene(canvas, S) {
+  const world = S.world();
+  const env = S.env;
+
+  const names = new Set(["water_still", "sand"]);
   for (const t of Object.values(TYPES))
     for (const k of ["all", "top", "side", "bottom"]) if (t[k]) names.add(t[k]);
   for (const p of Object.keys(PLANTS)) names.add(p);
   const images = {};
-  await Promise.all(
-    [...names].map(async (n) => (images[n] = await loadImage(`/textures/block/${n}.png`)))
-  );
+  await Promise.all([...names].map(async (n) => (images[n] = await loadImage(`/textures/block/${n}.png`))));
   const tex = {};
-  for (const n of names) if (n !== "water_still") tex[n] = frameTexture(images[n]).tex;
+  for (const n of names) tex[n] = frameTexture(images[n]).tex;
 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -86,7 +146,6 @@ export async function createScene(canvas) {
   renderer.toneMappingExposure = 1.05;
 
   const scene = new THREE.Scene();
-  const world = buildWorld();
 
   // Sky dome
   const skyU = {
@@ -114,26 +173,26 @@ export async function createScene(canvas) {
   );
   sky.renderOrder = -1;
   scene.add(sky);
-  scene.fog = new THREE.Fog(0xbcdcf5, 140, 380);
+  scene.fog = new THREE.Fog(0xbcdcf5, ...(env.fog || [140, 380]));
 
   const hemi = new THREE.HemisphereLight(0xd6ecff, 0x6b5a45, 1.25);
   scene.add(hemi);
   const sun = new THREE.DirectionalLight(0xfff1dc, 2.4);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
-  const sc = sun.shadow.camera;
-  sc.left = -62; sc.right = 62; sc.top = 62; sc.bottom = -62; sc.near = 1; sc.far = 260;
+  const ext = env.shadow?.extent ?? 62;
+  Object.assign(sun.shadow.camera, { left: -ext, right: ext, top: ext, bottom: -ext, near: 1, far: 320 });
   sun.shadow.bias = -0.0006;
   sun.shadow.normalBias = 0.03;
   scene.add(sun, sun.target);
-  sun.target.position.set(0, 10, 0);
+  sun.target.position.set(...(env.shadow?.center ?? [0, 10, 0]));
 
-  const lampLight = new THREE.PointLight(0xffd48a, 0, 60, 1.6);
-  lampLight.position.set(C.x + 0.5, G + 23.5, C.z + 0.5);
-  scene.add(lampLight);
-  const cottageLight = new THREE.PointLight(0xffb86b, 0, 14, 1.8);
-  cottageLight.position.set(C.x - 9, G + 3, C.z + 1.5);
-  scene.add(cottageLight);
+  const points = (env.lights || []).map((l) => {
+    const p = new THREE.PointLight(l.color, 0, l.distance, 1.7);
+    p.position.set(...l.pos);
+    scene.add(p);
+    return { ...l, light: p };
+  });
 
   // Materials
   const materials = {};
@@ -141,6 +200,7 @@ export async function createScene(canvas) {
   const mkMat = (name, def, face) => {
     const opts = { map: tex[name] };
     if (def.cutout) Object.assign(opts, { alphaTest: 0.35, side: THREE.DoubleSide });
+    if (def.liquid) Object.assign(opts, { transparent: true, opacity: 0.85 });
     const m = new THREE.MeshLambertMaterial(opts);
     if (face === "top" && def.topTint) m.color.set(def.topTint);
     if (def.tint) m.color.set(def.tint);
@@ -165,71 +225,57 @@ export async function createScene(canvas) {
   const boxGeo = new THREE.BoxGeometry(1, 1, 1);
   const pathGeo = new THREE.BoxGeometry(1, 0.08, 1);
   const tmp = new THREE.Object3D();
+  const key3 = (b) => `${b.x},${b.y},${b.z}`;
 
-  // Group instances by type; build blocks keep a schedule for animation.
-  const phaseTimes = Object.fromEntries(PHASES.map((p) => [p.key, p]));
+  // Schedule builds and removals from the scenario's phases.
+  const phaseOf = Object.fromEntries(S.phases.map((p) => [p.key, p]));
+  const schedule = (list, p) =>
+    list.map((b, i) => ({ ...b, idx: i, n: list.length, at: p.t0 + (i / Math.max(1, list.length - 1)) * (p.t1 - p.t0 - 0.3) }));
+  const removeAt = new Map();
+  const removals = [];
+  for (const [key, list] of Object.entries(world.remove || {})) {
+    for (const r of schedule(list, phaseOf[key])) {
+      removeAt.set(key3(r), r.at);
+      removals.push({ ...r, key });
+    }
+  }
+  const builds = [];
+  for (const [key, list] of Object.entries(world.build || {}))
+    for (const b of schedule(list, phaseOf[key])) builds.push({ ...b, key });
+
+  // Every block becomes an instance entry; only animated ones are re-posed per frame.
   const byType = {};
-  const add = (b, t0) => {
-    (byType[b.type] ||= { stat: [], build: [] })[t0 == null ? "stat" : "build"].push({ ...b, t0 });
+  const entry = (b, t0, mode) => {
+    const def = TYPES[b.type];
+    // A removal only applies to blocks that exist before it (terrain carved,
+    // or a wall later opened into a gate), never to blocks built after it.
+    const r = removeAt.get(key3(b));
+    const e = { x: b.x, y: b.y, z: b.z, t0, mode, tr: r != null && r > t0 ? r : Infinity, overlay: !!def.overlay };
+    (byType[b.type] ||= []).push(e);
+    return e;
   };
-  for (const b of world.terrain) add(b);
-  const buildOrder = [];
-  for (const [key, list] of Object.entries(world.build)) {
-    const p = phaseTimes[key];
-    list.forEach((b, i) => {
-      const t0 = p.t0 + (i / Math.max(1, list.length - 1)) * (p.t1 - p.t0 - 0.3);
-      add(b, t0);
-      buildOrder.push({ ...b, t0 });
-    });
+  for (const b of world.terrain) {
+    const t0 = S.reveal ? S.reveal(b) : -Infinity;
+    entry(b, t0, "chunk");
   }
-  buildOrder.sort((a, b) => a.t0 - b.t0);
-
-  // Blueprint ghost: the agent's plan drawn in the world before blocks land.
-  const late = new Set(["lanternCore", "path"]);
-  const ghosts = [];
-  for (const [key, list] of Object.entries(world.build)) {
-    const p = phaseTimes[key];
-    list.forEach((b, i) => {
-      const src = byType[b.type].build.find((x) => x.x === b.x && x.y === b.y && x.z === b.z);
-      const tg = late.has(key)
-        ? p.t0 - 0.9 + (i / list.length) * 0.5
-        : 12.5 + ((b.y - G) / 28) * 1.3 + ((b.x + b.z) & 3) * 0.03;
-      ghosts.push({ ...b, tg, t0: src.t0, overlay: TYPES[b.type].overlay });
-    });
-  }
-  const ghostMat = new THREE.ShaderMaterial({
-    transparent: true,
-    depthWrite: false,
-    uniforms: { color: { value: new THREE.Color("#8cb8f0") }, opacity: { value: 1 } },
-    vertexShader: `varying vec2 vUv; void main(){ vUv = uv; vec4 p = vec4(position, 1.0);
-      #ifdef USE_INSTANCING
-        p = instanceMatrix * p;
-      #endif
-      gl_Position = projectionMatrix * modelViewMatrix * p; }`,
-    fragmentShader: `uniform vec3 color; uniform float opacity; varying vec2 vUv;
-      void main(){ float e = min(min(vUv.x, 1.0 - vUv.x), min(vUv.y, 1.0 - vUv.y));
-        float line = 1.0 - smoothstep(0.035, 0.07, e);
-        gl_FragColor = vec4(color, mix(0.16, 0.95, line) * opacity); }`,
-  });
-  const ghostMesh = new THREE.InstancedMesh(boxGeo, ghostMat, ghosts.length);
-  ghostMesh.renderOrder = 5;
-  ghostMesh.frustumCulled = false;
+  for (const b of builds) entry(b, b.at, "build");
 
   const meshes = [];
-  for (const [type, { stat, build }] of Object.entries(byType)) {
-    const def = TYPES[type];
-    const mesh = new THREE.InstancedMesh(def.overlay ? pathGeo : boxGeo, materials[type], stat.length + build.length);
-    mesh.castShadow = !def.overlay;
+  const addMesh = (geo, mat, entries, opts = {}) => {
+    const mesh = new THREE.InstancedMesh(geo, mat, entries.length);
+    // Instances start hidden, so bounds computed on the first frame would be wrong.
+    mesh.frustumCulled = false;
+    mesh.castShadow = opts.cast ?? true;
     mesh.receiveShadow = true;
-    stat.forEach((b, i) => {
-      tmp.position.set(b.x + 0.5, b.y + 0.5, b.z + 0.5);
-      tmp.scale.setScalar(1);
-      tmp.updateMatrix();
-      mesh.setMatrixAt(i, tmp.matrix);
-    });
-    mesh.userData = { def, build, offset: stat.length };
+    if (opts.renderOrder) mesh.renderOrder = opts.renderOrder;
+    mesh.userData.entries = entries;
     scene.add(mesh);
     meshes.push(mesh);
+    return mesh;
+  };
+  for (const [type, entries] of Object.entries(byType)) {
+    const def = TYPES[type];
+    addMesh(def.overlay ? pathGeo : boxGeo, materials[type], entries, { cast: !def.overlay && !def.liquid, renderOrder: def.liquid ? 2 : 0 });
   }
 
   // Plants: two crossed quads per instance
@@ -249,54 +295,81 @@ export async function createScene(canvas) {
   })();
   for (const [plant, tint] of Object.entries(PLANTS)) {
     const list = world.decor.filter((d) => d.type === plant);
+    if (!list.length) continue;
     const m = new THREE.MeshLambertMaterial({ map: tex[plant], alphaTest: 0.4, side: THREE.DoubleSide });
     if (tint) m.color.set(tint);
-    const mesh = new THREE.InstancedMesh(crossGeo, m, list.length);
-    list.forEach((d, i) => {
-      tmp.position.set(d.x + 0.5, d.y + 0.5, d.z + 0.5);
-      tmp.scale.setScalar(1);
-      tmp.updateMatrix();
-      mesh.setMatrixAt(i, tmp.matrix);
-    });
-    mesh.receiveShadow = true;
-    scene.add(mesh);
+    const entries = list.map((d) => ({
+      x: d.x, y: d.y, z: d.z, mode: "chunk", t0: S.reveal ? S.reveal(d) : -Infinity,
+      tr: removeAt.get(key3({ x: d.x, y: d.y - 1, z: d.z })) ?? Infinity, overlay: false,
+    }));
+    addMesh(crossGeo, m, entries, { cast: false });
   }
 
-  // Water: animated still-water frames on a large plane
+  // Blueprint ghosts (to build) and redline ghosts (to excavate).
+  const ghostMat = (color) =>
+    new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      uniforms: { color: { value: new THREE.Color(color) } },
+      vertexShader: `varying vec2 vUv; void main(){ vUv = uv; vec4 p = vec4(position, 1.0);
+        #ifdef USE_INSTANCING
+          p = instanceMatrix * p;
+        #endif
+        gl_Position = projectionMatrix * modelViewMatrix * p; }`,
+      fragmentShader: `uniform vec3 color; varying vec2 vUv;
+        void main(){ float e = min(min(vUv.x, 1.0 - vUv.x), min(vUv.y, 1.0 - vUv.y));
+          float line = 1.0 - smoothstep(0.035, 0.07, e);
+          gl_FragColor = vec4(color, mix(0.16, 0.95, line)); }`,
+    });
+  const makeGhosts = (list, color, until, grow) => {
+    const ghosts = list
+      .map((b) => ({ ...b, tg: S.ghost?.(b), until: until(b) }))
+      .filter((g) => g.tg != null);
+    const mesh = new THREE.InstancedMesh(boxGeo, ghostMat(color), Math.max(1, ghosts.length));
+    mesh.count = ghosts.length;
+    mesh.renderOrder = 5;
+    mesh.frustumCulled = false;
+    scene.add(mesh);
+    return { mesh, ghosts, grow };
+  };
+  const ghostSets = [
+    makeGhosts(builds, "#8cb8f0", (b) => b.at + 0.15, 1),
+    makeGhosts(removals, "#ff7a62", (r) => r.at, 1.03),
+  ];
+
+  // Water plane
+  const sea = world.sea;
   const water = frameTexture(images.water_still);
   water.tex.minFilter = THREE.LinearMipmapLinearFilter;
   water.tex.wrapS = water.tex.wrapT = THREE.RepeatWrapping;
   water.tex.repeat.set(700, 700);
-  const waterMat = new THREE.MeshLambertMaterial({
-    map: water.tex,
-    color: 0x3f76e4,
-    transparent: true,
-    opacity: 0.9,
-  });
-  const waterMesh = new THREE.Mesh(new THREE.PlaneGeometry(700, 700), waterMat);
-  waterMesh.rotation.x = -Math.PI / 2;
-  waterMesh.position.y = SEA + 0.88;
-  waterMesh.receiveShadow = true;
-  scene.add(waterMesh);
-  const sandTex = frameTexture(images.sand).tex;
-  sandTex.wrapS = sandTex.wrapT = THREE.RepeatWrapping;
-  sandTex.repeat.set(700, 700);
-  const seabed = new THREE.Mesh(new THREE.PlaneGeometry(700, 700), new THREE.MeshLambertMaterial({ map: sandTex }));
-  seabed.rotation.x = -Math.PI / 2;
-  seabed.position.y = 0.99;
-  scene.add(seabed);
+  const waterMat = new THREE.MeshLambertMaterial({ map: water.tex, color: 0x3f76e4, transparent: true, opacity: 0.9 });
+  const waterGroup = new THREE.Group();
+  if (sea != null) {
+    const waterMesh = new THREE.Mesh(new THREE.PlaneGeometry(700, 700), waterMat);
+    waterMesh.rotation.x = -Math.PI / 2;
+    waterMesh.position.y = sea + 0.88;
+    waterMesh.receiveShadow = true;
+    const sandTex = frameTexture(images.sand).tex;
+    sandTex.wrapS = sandTex.wrapT = THREE.RepeatWrapping;
+    sandTex.repeat.set(700, 700);
+    const seabed = new THREE.Mesh(new THREE.PlaneGeometry(700, 700), new THREE.MeshLambertMaterial({ map: sandTex }));
+    seabed.rotation.x = -Math.PI / 2;
+    seabed.position.y = world.seabed ?? 0.99;
+    waterGroup.add(waterMesh, seabed);
+    scene.add(waterGroup);
+  }
 
   // Minecraft-style clouds
   const clouds = new THREE.Group();
   const cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, emissive: 0xffffff, emissiveIntensity: 0.35 });
-  const cloudGeo = new THREE.BoxGeometry(12, 4, 12);
   const cells = [];
   for (let x = -24; x < 24; x++)
     for (let z = -24; z < 24; z++) {
       const n = Math.sin(x * 0.7 + Math.cos(z * 0.45) * 2) + Math.cos(z * 0.6 + Math.sin(x * 0.3) * 2);
       if (n > 1.05) cells.push([x, z]);
     }
-  const cloudMesh = new THREE.InstancedMesh(cloudGeo, cloudMat, cells.length);
+  const cloudMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(12, 4, 12), cloudMat, cells.length);
   cells.forEach(([x, z], i) => {
     tmp.position.set(x * 12, 0, z * 12);
     tmp.scale.setScalar(1);
@@ -304,53 +377,61 @@ export async function createScene(canvas) {
     cloudMesh.setMatrixAt(i, tmp.matrix);
   });
   clouds.add(cloudMesh);
-  clouds.position.y = 78;
+  clouds.position.y = env.cloudHeight ?? 78;
   scene.add(clouds);
 
-  // Lighthouse beams
-  const beamGeo = new THREE.ConeGeometry(9, 90, 32, 1, true);
-  beamGeo.translate(0, -45, 0);
-  beamGeo.rotateZ(Math.PI / 2);
+  // Optional rotating light beams (the lighthouse)
   const beamMat = new THREE.MeshBasicMaterial({
-    color: 0xffe2a0,
-    transparent: true,
-    opacity: 0,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-    fog: false,
+    color: 0xffe2a0, transparent: true, opacity: 0, blending: THREE.AdditiveBlending,
+    depthWrite: false, side: THREE.DoubleSide, fog: false,
   });
   const beams = new THREE.Group();
-  const b1 = new THREE.Mesh(beamGeo, beamMat);
-  const b2 = new THREE.Mesh(beamGeo, beamMat);
-  b2.rotation.y = Math.PI;
-  beams.add(b1, b2);
-  beams.position.copy(lampLight.position);
-  beams.visible = false;
-  scene.add(beams);
-  scene.add(ghostMesh);
+  if (env.beams) {
+    const beamGeo = new THREE.ConeGeometry(9, 90, 32, 1, true);
+    beamGeo.translate(0, -45, 0);
+    beamGeo.rotateZ(Math.PI / 2);
+    const b1 = new THREE.Mesh(beamGeo, beamMat);
+    const b2 = new THREE.Mesh(beamGeo, beamMat);
+    b2.rotation.y = Math.PI;
+    beams.add(b1, b2);
+    beams.position.set(...env.beams.pos);
+    beams.visible = false;
+    scene.add(beams);
+  }
 
-  // Selection box (WorldEdit-style) and the build "cursor" cube
-  const selection = new THREE.Group();
-  const selEdges = new THREE.LineSegments(
-    new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)),
-    new THREE.LineBasicMaterial({ color: 0xf4b64a, transparent: true, opacity: 1, fog: false, depthTest: false })
-  );
-  selEdges.renderOrder = 10;
-  const selFill = new THREE.Mesh(
-    new THREE.BoxGeometry(1, 1, 1),
-    new THREE.MeshBasicMaterial({ color: 0xf4b64a, transparent: true, opacity: 0.08, depthWrite: false, fog: false })
-  );
-  selection.add(selFill, selEdges);
-  selection.visible = false;
-  scene.add(selection);
+  // Selection (amber), detection highlight (blueprint) and the build cursor
+  const wireBox = (color, fillOpacity) => {
+    const g = new THREE.Group();
+    const edges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)),
+      new THREE.LineBasicMaterial({ color, transparent: true, opacity: 1, fog: false, depthTest: false })
+    );
+    edges.renderOrder = 10;
+    const fill = new THREE.Mesh(
+      new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: fillOpacity, depthWrite: false, fog: false })
+    );
+    g.add(fill, edges);
+    g.visible = false;
+    g.userData = { edges, fill, fillOpacity };
+    scene.add(g);
+    return g;
+  };
+  const selection = wireBox(0xf4b64a, 0.03);
+  const highlight = wireBox(0x8cb8f0, 0.05);
+  const placeBox = (g, b) => {
+    if (!b || (b.alpha ?? 1) <= 0.001) { g.visible = false; return; }
+    const { min, max, alpha = 1 } = b;
+    g.visible = true;
+    g.position.set((min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2);
+    g.scale.set(Math.max(0.01, max[0] - min[0]), Math.max(0.01, max[1] - min[1]), Math.max(0.01, max[2] - min[2]));
+    g.userData.edges.material.opacity = alpha;
+    g.userData.fill.material.opacity = g.userData.fillOpacity * alpha;
+  };
 
   const dimGeo = new THREE.BufferGeometry();
   dimGeo.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(3 * 2 * 3 * 7), 3));
-  const dims = new THREE.LineSegments(
-    dimGeo,
-    new THREE.LineBasicMaterial({ color: 0xf4b64a, transparent: true, fog: false, depthTest: false })
-  );
+  const dims = new THREE.LineSegments(dimGeo, new THREE.LineBasicMaterial({ color: 0xf4b64a, transparent: true, fog: false, depthTest: false }));
   dims.renderOrder = 10;
   dims.frustumCulled = false;
   scene.add(dims);
@@ -363,11 +444,9 @@ export async function createScene(canvas) {
   head.visible = false;
   scene.add(head);
 
-  // Cameras
+  // Cameras and post-processing
   const camera = new THREE.PerspectiveCamera(34, 1, 0.5, 1200);
   const thumbCam = new THREE.PerspectiveCamera(34, 1.6, 0.5, 1200);
-
-  // Post-processing
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
   const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.15, 0.6, 0.86);
@@ -384,9 +463,7 @@ export async function createScene(canvas) {
     renderer.setSize(w, h, false);
     composer.setSize(w, h);
     camera.aspect = w / h;
-    // Shift the optical centre left so the scene is framed beside the panel.
-    camera.setViewOffset(w, h, rightPanel / 2, 0, w, h);
-    camera.updateProjectionMatrix();
+    setPanelShift(0);
   }
 
   const colors = {
@@ -399,46 +476,58 @@ export async function createScene(canvas) {
     dayFog: new THREE.Color("#bcdcf5"), duskFog: new THREE.Color("#c9766a"),
   };
   const mix = (a, b, k, out) => out.copy(a).lerp(b, k);
+  const deepWater = new THREE.Color("#2a3f7a");
+  const sunCfg = env.sun || { az: -0.55, el: 0.95, duskAz: -1.35, duskEl: 0.12 };
+  const events = [...builds.map((b) => ({ t: b.at, b, kind: "build" })), ...removals.map((r) => ({ t: r.at, b: r, kind: "remove" }))].sort((a, b) => a.t - b.t);
 
   let lastWaterFrame = -1;
+  let prevT = null;
   const v = new THREE.Vector3();
 
   function update(t, cam) {
-    // Build animation
-    let latest = null;
     for (const mesh of meshes) {
-      const { def, build, offset } = mesh.userData;
-      if (!build.length) continue;
-      build.forEach((b, i) => {
-        const k = clamp01((t - b.t0) / 0.35);
-        const s = k <= 0 ? 0.0001 : Math.max(0.0001, easeOutBack(k));
-        tmp.position.set(b.x + 0.5, b.y + (def.overlay ? 1.04 : 0.5) + (1 - smooth(k)) * 1.6, b.z + 0.5);
-        tmp.scale.setScalar(Math.min(s, 1.12));
+      const entries = mesh.userData.entries;
+      let dirty = false;
+      for (let i = 0; i < entries.length; i++) {
+        const e = entries[i];
+        if (!needsUpdate(e, t, prevT)) continue;
+        const p = placeAt(e, t);
+        tmp.position.set(e.x + 0.5, p ? p.y : -999, e.z + 0.5);
+        tmp.scale.setScalar(p ? p.s : HIDDEN);
         tmp.updateMatrix();
-        mesh.setMatrixAt(offset + i, tmp.matrix);
+        mesh.setMatrixAt(i, tmp.matrix);
+        dirty = true;
+      }
+      if (dirty) mesh.instanceMatrix.needsUpdate = true;
+    }
+    for (const { mesh, ghosts, grow } of ghostSets) {
+      ghosts.forEach((g, i) => {
+        const k = clamp01((t - g.tg) / 0.25);
+        const s = k <= 0 || t >= g.until ? HIDDEN : (0.6 + 0.4 * smooth(k)) * grow;
+        const ov = TYPES[g.type]?.overlay;
+        tmp.position.set(g.x + 0.5, g.y + (ov ? 1.04 : 0.5), g.z + 0.5);
+        tmp.scale.set(s, ov ? s * 0.08 : s, s);
+        tmp.updateMatrix();
+        mesh.setMatrixAt(i, tmp.matrix);
       });
       mesh.instanceMatrix.needsUpdate = true;
     }
-    ghosts.forEach((g, i) => {
-      const k = clamp01((t - g.tg) / 0.25);
-      const gone = t >= g.t0 + 0.15;
-      const s = k <= 0 || gone ? 0.0001 : 0.6 + 0.4 * smooth(k);
-      tmp.position.set(g.x + 0.5, g.y + (g.overlay ? 1.04 : 0.5), g.z + 0.5);
-      tmp.scale.set(s, g.overlay ? s * 0.08 : s, s);
-      tmp.updateMatrix();
-      ghostMesh.setMatrixAt(i, tmp.matrix);
-    });
-    ghostMesh.instanceMatrix.needsUpdate = true;
-    let placed = 0;
-    for (const b of buildOrder) {
-      if (b.t0 <= t) { placed++; latest = b; } else break;
+    prevT = t;
+
+    let placed = 0, removed = 0, latest = null;
+    for (const ev of events) {
+      if (ev.t > t) break;
+      if (ev.kind === "build") placed++;
+      else removed++;
+      latest = ev;
     }
-    const building = PHASES.some((p) => t >= p.t0 && t <= p.t1 + 0.2);
-    head.visible = !!latest && building;
-    if (latest) head.position.set(latest.x + 0.5, latest.y + 0.5 + (TYPES[latest.type].overlay ? 0.55 : 0), latest.z + 0.5);
+    const active = S.phases.some((p) => t >= p.t0 && t <= p.t1 + 0.2);
+    head.visible = !!latest && active;
+    if (latest) head.position.set(latest.b.x + 0.5, latest.b.y + 0.5 + (TYPES[latest.b.type]?.overlay ? 0.55 : 0), latest.b.z + 0.5);
+    head.material.color.set(latest?.kind === "remove" ? 0xff7a62 : 0xf4b64a);
 
     // Time of day
-    const d = smooth(range(t, DUSK.t0, DUSK.t1));
+    const d = env.dusk ? smooth(range(t, env.dusk.t0, env.dusk.t1)) : 0;
     mix(colors.dayTop, colors.duskTop, d, skyU.top.value);
     mix(colors.dayHor, colors.duskHor, d, skyU.horizon.value);
     mix(colors.dayBot, colors.duskBot, d, skyU.bottom.value);
@@ -448,21 +537,23 @@ export async function createScene(canvas) {
     mix(colors.dayLight, colors.duskLight, d, sun.color);
     hemi.intensity = lerp(1.25, 0.45, d);
     sun.intensity = lerp(2.4, 1.1, d);
-    const sunAz = lerp(-0.55, -1.35, d);
-    const sunEl = lerp(0.95, 0.12, d);
+    const sunAz = lerp(sunCfg.az, sunCfg.duskAz, d);
+    const sunEl = lerp(sunCfg.el, sunCfg.duskEl, d);
     v.set(Math.cos(sunEl) * Math.sin(sunAz), Math.sin(sunEl), Math.cos(sunEl) * Math.cos(sunAz));
     skyU.sunDir.value.copy(v);
-    sun.position.copy(v).multiplyScalar(120).add(sun.target.position);
+    sun.position.copy(v).multiplyScalar(140).add(sun.target.position);
     renderer.toneMappingExposure = lerp(1.05, 1.15, d);
     for (const m of emissiveMats) m.emissiveIntensity = lerp(0.35, 2.4, d);
-    lampLight.intensity = lerp(0, 90, d) * (t > PHASES[5].t0 ? 1 : 0);
-    cottageLight.intensity = lerp(0, 6, d);
-    beams.visible = d > 0.01;
-    beamMat.opacity = 0.13 * d;
-    beams.rotation.y = t * 0.9;
+    for (const p of points) p.light.intensity = lerp(0, p.intensity, d) * (t > (p.after ?? 0) ? 1 : 0);
+    if (env.beams) {
+      beams.visible = d > 0.01 && t > env.beams.after;
+      beamMat.opacity = 0.13 * d;
+      beams.rotation.y = t * 0.9;
+    }
     bloom.strength = lerp(0.12, 0.85, d);
     bloom.enabled = d > 0.001;
-    waterMat.color.set(0x3f76e4).lerp(new THREE.Color("#2a3f7a"), d * 0.6);
+    waterMat.color.set(0x3f76e4).lerp(deepWater, d * 0.6);
+    if (sea != null) waterGroup.visible = t >= (env.waterFrom ?? -Infinity);
 
     // Water animation
     const wf = Math.floor(t * 12) % water.frames;
@@ -478,29 +569,31 @@ export async function createScene(canvas) {
     }
     clouds.position.x = -60 + t * 1.6;
 
-    // Camera
     camera.position.copy(cam.position);
     camera.lookAt(cam.target);
     sky.position.copy(camera.position);
-    return { placed, total: buildOrder.length, latest: building && latest ? latest.type : null };
+    return {
+      placed, removed,
+      latest: active && latest?.kind === "build" ? latest.b.type : null,
+    };
   }
 
   // Architectural dimension lines: extension lines, a dimension line, and
   // 45-degree ticks at each end. Returns label anchors for the overlay.
-  function setDims(box, alpha) {
-    const { min, max } = box;
+  function setDims(b, alpha) {
+    const { min, max } = b;
     const o = 1.6, e = 0.5, tk = 0.45;
     const arr = dimGeo.attributes.position.array;
     let i = 0;
-    const seg = (a, b) => { arr.set(a, i); arr.set(b, i + 3); i += 6; };
-    const dim = (a, b, ext, tick) => {
-      const A = a.map((v, j) => v + ext[j]), B = b.map((v, j) => v + ext[j]);
-      seg(a.map((v, j) => v + ext[j] * 0.15), a.map((v, j) => v + ext[j] * (1 + e / o)));
-      seg(b.map((v, j) => v + ext[j] * 0.15), b.map((v, j) => v + ext[j] * (1 + e / o)));
+    const seg = (a, c) => { arr.set(a, i); arr.set(c, i + 3); i += 6; };
+    const dim = (a, c, ext, tick) => {
+      const A = a.map((q, j) => q + ext[j]), B = c.map((q, j) => q + ext[j]);
+      seg(a.map((q, j) => q + ext[j] * 0.15), a.map((q, j) => q + ext[j] * (1 + e / o)));
+      seg(c.map((q, j) => q + ext[j] * 0.15), c.map((q, j) => q + ext[j] * (1 + e / o)));
       seg(A, B);
-      seg(A.map((v, j) => v - tick[j]), A.map((v, j) => v + tick[j]));
-      seg(B.map((v, j) => v - tick[j]), B.map((v, j) => v + tick[j]));
-      return A.map((v, j) => (v + B[j]) / 2);
+      seg(A.map((q, j) => q - tick[j]), A.map((q, j) => q + tick[j]));
+      seg(B.map((q, j) => q - tick[j]), B.map((q, j) => q + tick[j]));
+      return A.map((q, j) => (q + B[j]) / 2);
     };
     const labels = {
       w: dim([min[0], min[1], max[2]], [max[0], min[1], max[2]], [0, 0, o], [tk, 0, tk]),
@@ -514,15 +607,14 @@ export async function createScene(canvas) {
     return labels;
   }
 
-  function setSelection(box, dimAlpha = 0) {
-    if (!box) { selection.visible = false; dims.visible = false; return null; }
-    const { min, max, alpha = 1 } = box;
-    selection.visible = true;
-    selection.position.set((min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2);
-    selection.scale.set(Math.max(0.01, max[0] - min[0]), Math.max(0.01, max[1] - min[1]), Math.max(0.01, max[2] - min[2]));
-    selEdges.material.opacity = alpha;
-    selFill.material.opacity = 0.03 * alpha;
-    return setDims(box, dimAlpha);
+  function setSelection(b, dimAlpha = 0) {
+    placeBox(selection, b);
+    if (!b) { dims.visible = false; return null; }
+    return setDims(b, dimAlpha);
+  }
+
+  function setHighlight(b) {
+    placeBox(highlight, b);
   }
 
   function render() {
@@ -531,7 +623,7 @@ export async function createScene(canvas) {
 
   // Renders a still from another viewpoint into a 2D canvas (the agent's
   // "screenshot" for self-review). Returns projected points for annotations.
-  function snapshot(out, view, points = []) {
+  function snapshot(out, view, pts = []) {
     thumbCam.aspect = out.width / out.height;
     thumbCam.fov = view.fov || 30;
     thumbCam.updateProjectionMatrix();
@@ -543,16 +635,16 @@ export async function createScene(canvas) {
     renderer.setPixelRatio(1);
     renderer.setSize(w * 2, h * 2, false);
     sky.position.copy(thumbCam.position);
-    const selWas = selection.visible, headWas = head.visible, dimsWas = dims.visible;
-    selection.visible = head.visible = dims.visible = false;
+    const hide = [selection, highlight, head, dims, ...ghostSets.map((g) => g.mesh)];
+    const was = hide.map((o) => o.visible);
+    hide.forEach((o) => (o.visible = false));
     renderer.render(scene, thumbCam);
-    const ctx = out.getContext("2d");
-    ctx.drawImage(renderer.domElement, 0, 0, w * 2, h * 2, 0, 0, w, h);
-    selection.visible = selWas; head.visible = headWas; dims.visible = dimsWas;
+    out.getContext("2d").drawImage(renderer.domElement, 0, 0, w * 2, h * 2, 0, 0, w, h);
+    hide.forEach((o, i) => (o.visible = was[i]));
     renderer.setPixelRatio(pr);
     renderer.setSize(size.x, size.y, false);
     composer.setSize(size.x, size.y);
-    return points.map((p) => {
+    return pts.map((p) => {
       v.set(...p).project(thumbCam);
       return [((v.x + 1) / 2) * w, ((1 - v.y) / 2) * h];
     });
@@ -563,6 +655,8 @@ export async function createScene(canvas) {
     return [((v.x + 1) / 2) * viewW, ((1 - v.y) / 2) * viewH];
   }
 
-  const counts = Object.fromEntries(Object.entries(world.build).map(([k, l]) => [k, l.length]));
-  return { resize, update, render, setSelection, setPanelShift, snapshot, project, counts };
+  const counts = {};
+  for (const [k, l] of Object.entries(world.build || {})) counts[k] = l.length;
+  for (const [k, l] of Object.entries(world.remove || {})) counts[k] = l.length;
+  return { resize, update, render, setSelection, setHighlight, setPanelShift, snapshot, project, counts, world };
 }

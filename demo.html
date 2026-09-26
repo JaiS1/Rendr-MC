@@ -3,12 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Rendr Architect</title>
+    <title>Rendr Demo</title>
   </head>
   <body>
     <canvas id="view"></canvas>
 
-    <header class="topbar">
+    <header class="topbar" id="topbar">
       <div class="brand">
         <svg class="mark" viewBox="0 0 24 24" aria-hidden="true">
           <path d="M12 2.5 20.5 7.25v9.5L12 21.5l-8.5-4.75v-9.5z" />
@@ -16,8 +16,8 @@
         </svg>
         <span class="wordmark">rendr</span>
         <span class="divider"></span>
-        <span class="world">Survival Island</span>
-        <span class="tag">Java 1.21</span>
+        <span class="world" id="worldName">Survival Island</span>
+        <span class="tag" id="worldTag">Java 1.21</span>
       </div>
       <div class="meters">
         <span class="placed" id="placed"><b>+0</b> placed</span>
@@ -29,7 +29,7 @@
       </div>
     </header>
 
-    <nav class="toolbar" aria-label="Tools">
+    <nav class="toolbar" id="toolbar" aria-label="Tools">
       <button data-tool="select" class="active" aria-label="Select">
         <svg viewBox="0 0 24 24"><path d="M6 4l12 7-5.2 1.4L10 18z" /></svg>
       </button>
@@ -63,9 +63,9 @@
           <span class="status" id="agentStatus"><i></i><span>Idle</span></span>
         </div>
         <dl class="tb-grid">
-          <div><dt>Project</dt><dd>Lighthouse</dd></div>
-          <div><dt>Site</dt><dd>Cliff plateau</dd></div>
-          <div><dt>Scale</dt><dd>1 block = 1 m</dd></div>
+          <div><dt>Project</dt><dd id="tb-project">Lighthouse</dd></div>
+          <div><dt>Site</dt><dd id="tb-site">Cliff plateau</dd></div>
+          <div><dt>Scale</dt><dd id="tb-scale">1 block = 1 m</dd></div>
           <div><dt>Elapsed</dt><dd id="elapsed">0:00.0</dd></div>
         </dl>
       </div>
@@ -82,8 +82,8 @@
         </button>
       </div>
       <div class="cmd-foot">
-        <span class="ctx"><i></i>Selection 21 × 17 × 28</span>
-        <span>Cliff plateau · 9,996 blocks of space</span>
+        <span class="ctx"><i></i><span id="cmdCtx">Selection 21 × 17 × 28</span></span>
+        <span id="cmdFooter">Cliff plateau · 9,996 blocks of space</span>
       </div>
     </div>
 
@@ -92,7 +92,7 @@
       <div class="slots" id="slots"></div>
     </div>
 
-    <div class="corner">
+    <div class="corner" id="corner">
       <span class="compass" id="compass">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 5l2.2 7H9.8z" class="n" /><path d="M12 19l-2.2-7h4.4z" /></svg>
         <span id="coords">3, 14, 1</span>

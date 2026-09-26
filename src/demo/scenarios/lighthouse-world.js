@@ -151,7 +151,7 @@ export function buildWorld() {
     decor.push({ x, y: H(x, z) + 1, z, type: plants[Math.floor(rng() * plants.length)] });
   }
 
-  return { terrain, decor, build, heightAt: H };
+  return { terrain, decor, build, sea: SEA };
 }
 
 function buildStructures(H) {
