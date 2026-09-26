@@ -2,12 +2,12 @@
 
 A survey of related open-source projects, taken during the 2026 refresh. Star counts and activity dates are approximate.
 
-## Closest to our idea (AI that builds in a browser-rendered world)
+## Closest related work (AI that builds in a browser-rendered world)
 
-| Project | What it does | How we differ |
+| Project | What it does | How Rendr's approach differs |
 |---|---|---|
-| [NoblerWorks-HQ/minecraft-agentic](https://github.com/NoblerWorks-HQ/minecraft-agentic) (6★, MIT) | Prompt → LLM plan → 4 Mineflayer bots build live in prismarine-viewer → optional vision critique + repair | Needs a real MC server, Docker and bots, and uses the stock viewer. Ours runs fully in the browser, edits real world files, uses its own renderer, and measures what the critique improves |
-| [mc-bench](https://github.com/mc-bench/orchestrator) (mcbench.ai, 168★) | LLMs write build code, which runs on server containers; humans vote on the results | One-shot builds for benchmarking. It has no self-correction, no editor and no live stream. Its prompt set could serve as our eval |
+| [NoblerWorks-HQ/minecraft-agentic](https://github.com/NoblerWorks-HQ/minecraft-agentic) (6★, MIT) | Prompt → LLM plan → 4 Mineflayer bots build live in prismarine-viewer → optional vision critique + repair | Needs a real MC server, Docker and bots, and uses the stock viewer. Rendr's approach is browser-only with its own renderer |
+| [mc-bench](https://github.com/mc-bench/orchestrator) (mcbench.ai, 168★) | LLMs write build code, which runs on server containers; humans vote on the results | One-shot builds for benchmarking, with no self-correction or editor. Its prompt set would make a good eval set |
 | [ForgeScript-MC-Builder](https://github.com/yimeng-YM/ForgeScript-MC-Builder) (4★) | LLM → JS in QuickJS → three.js preview → .litematic | A static preview only: no live world and no critique loop |
 | [CyniaAI/BuilderGPT](https://github.com/CyniaAI/BuilderGPT) (163★, Apache-2) | One-shot LLM → schematic | Same gap |
 | [Mindcraft](https://github.com/mindcraft-bots/mindcraft) (5.8k★), [Voyager](https://github.com/MineDojo/Voyager) (7.2k★) | LLM agents that play survival | Aimed at gameplay, not architecture |
@@ -29,7 +29,7 @@ Research to cite: [APT (2411.17255)](https://arxiv.org/abs/2411.17255), which us
 - Editors: [Amulet](https://github.com/Amulet-Team/Amulet-Map-Editor) (desktop), [SchematicWebViewer](https://github.com/EngineHub/SchematicWebViewer), [ObjToSchematic](https://github.com/LucasDower/ObjToSchematic) (mesh → blocks)
 - Agent API design: [GDMC gdpc](https://github.com/avdstaaij/gdpc) and its [HTTP interface](https://github.com/Niels-NTG/gdmc_http_interface)
 
-## What we build ourselves (the impressive part)
+## What Rendr would build itself
 
 1. A chunked renderer with greedy meshing, baked AO and meshing in web workers
 2. A browser .mca/Anvil reader and a .litematic reader/writer (no mature JS library exists for .litematic)
