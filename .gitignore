@@ -26,5 +26,5 @@ dist-ssr
 # External repositories
 temp_assets
 
-# Rendered demo video
+# Rendered video captures
 /rendr-demo*.mp4

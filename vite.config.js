@@ -8,7 +8,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: 'index.html',
-        demo: 'demo.html',
+        studio: 'studio.html',
       },
     },
   },

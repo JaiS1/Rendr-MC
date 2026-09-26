@@ -1,4 +1,4 @@
-// Shared helpers for the demo worlds: deterministic noise, heightmap-to-blocks,
+// Shared helpers for scenario worlds: deterministic noise, heightmap-to-blocks,
 // trees and plants, and ordering for build lists.
 
 export function hash(x, z) {

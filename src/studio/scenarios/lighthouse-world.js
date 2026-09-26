@@ -1,4 +1,4 @@
-// Deterministic demo world: an island with a sea cliff, plus the scripted
+// Island world with a sea cliff, plus the
 // lighthouse build the "architect" places on top of it.
 
 export const WORLD_HALF = 48;

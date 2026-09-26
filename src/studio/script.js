@@ -1,4 +1,4 @@
-// Easing and timing helpers shared by every scenario. All demo motion is a
+// Easing and timing helpers shared by every scenario. All motion is a
 // function of time, so any frame can be rendered on its own.
 
 export const clamp01 = (x) => Math.min(1, Math.max(0, x));

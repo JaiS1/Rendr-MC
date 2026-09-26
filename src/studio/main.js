@@ -3,7 +3,7 @@ import "@fontsource/hanken-grotesk/400.css";
 import "@fontsource/hanken-grotesk/500.css";
 import "@fontsource/hanken-grotesk/600.css";
 import "@fontsource/hanken-grotesk/700.css";
-import "./demo.css";
+import "./studio.css";
 import { run } from "./ui.js";
 
 // ?scene=lighthouse | riverside | mountain

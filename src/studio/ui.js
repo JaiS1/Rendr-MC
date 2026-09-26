@@ -1,4 +1,4 @@
-// Generic runner for a scripted demo scenario. A scenario supplies the world,
+// Runner for a studio scenario. A scenario supplies the world,
 // the timeline and the feed; this module drives the scene and every overlay
 // as a pure function of time so frames can be rendered in any order.
 import * as THREE from "three";
