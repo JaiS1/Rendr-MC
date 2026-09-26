@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rendr · AI Architect demo</title>
+  </head>
+  <body>
+    <canvas id="view"></canvas>
+
+    <header class="topbar">
+      <div class="brand">
+        <svg class="logo" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 2 21 7v10l-9 5-9-5V7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" />
+          <path d="M3 7l9 5 9-5M12 12v10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" />
+        </svg>
+        <span class="wordmark">rendr</span>
+        <span class="crumb">/</span>
+        <span class="world">survival_island</span>
+        <span class="pill">Java 1.21 · .mca</span>
+      </div>
+      <div class="stats">
+        <span class="chip placed" id="placed"><b>+0</b> blocks</span>
+        <span class="chip"><i class="dot"></i><b id="fps">60</b> fps</span>
+        <span class="chip"><b>1,024</b> chunks</span>
+        <span class="chip"><b>4.19M</b> blocks</span>
+      </div>
+    </header>
+
+    <nav class="toolbar">
+      <button data-tool="select" class="active" title="Select">
+        <svg viewBox="0 0 24 24"><path d="M5 3l14 8-6 1.5L10 19z" /></svg>
+      </button>
+      <button data-tool="place" title="Place">
+        <svg viewBox="0 0 24 24"><path d="M12 3 20 7.5v9L12 21l-8-4.5v-9z M4 7.5l8 4.5 8-4.5M12 12v9" /></svg>
+      </button>
+      <button data-tool="brush" title="Brush">
+        <svg viewBox="0 0 24 24"><path d="M14 4l6 6-8 8H6v-6z M11 7l6 6" /></svg>
+      </button>
+      <button data-tool="fill" title="Fill">
+        <svg viewBox="0 0 24 24"><path d="M4 12l7-7 8 8-7 7z M4 12h15 M20 16c0 1.5-1 2.5-1 3.5a1 1 0 0 0 2 0c0-1-1-2-1-3.5z" /></svg>
+      </button>
+      <span class="sep"></span>
+      <button data-tool="ai" id="aiTool" title="Architect">
+        <svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z M18.5 15l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z" /></svg>
+      </button>
+      <span class="tooltip" id="aiTip">Architect <kbd>A</kbd></span>
+    </nav>
+
+    <div class="sel-label" id="selLabel"><span id="selDims"></span><em>selected</em></div>
+
+    <aside class="panel" id="panel">
+      <div class="panel-head">
+        <div class="title">
+          <svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" /></svg>
+          Architect
+        </div>
+        <span class="status" id="agentStatus"><i></i><span>idle</span></span>
+      </div>
+      <div class="feed-wrap"><div class="feed" id="feed"></div></div>
+      <div class="composer" id="composer">
+        <div class="ctx" id="ctxChip">
+          <svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z" stroke-dasharray="3 2" /></svg>
+          <span>Selection · 21 × 28 × 17</span>
+        </div>
+        <div class="input">
+          <span id="promptText" class="placeholder">Describe what to build…</span><span class="caret" id="caret"></span>
+        </div>
+        <button class="send" id="sendBtn" aria-label="Send">
+          <svg viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6" /></svg>
+        </button>
+      </div>
+    </aside>
+
+    <div class="bottom-left">
+      <span class="coords" id="coords">x 12 · y 19 · z −8</span>
+      <span class="clock" id="clock">12:00</span>
+    </div>
+
+    <div class="cursor" id="cursor">
+      <svg viewBox="0 0 24 24"><path d="M4 2l16 11-7 1.4L9.6 21z" /></svg>
+      <span class="ripple" id="ripple"></span>
+    </div>
+
+    <div class="card title-card" id="titleCard">
+      <div class="big">rendr</div>
+      <div class="sub">An AI architect for Minecraft worlds, in the browser.</div>
+    </div>
+    <div class="card end-card" id="endCard">
+      <div class="big">rendr</div>
+      <div class="sub">Describe it. Watch it get built. Let it check its own work.</div>
+      <div class="facts">
+        <span><b>WebGL</b> chunk renderer</span>
+        <span><b>.mca</b> world import</span>
+        <span><b>Agentic</b> tool calls</span>
+        <span><b>Vision</b> self-review</span>
+      </div>
+      <div class="url">github.com/jais1/rendr-mc</div>
+    </div>
+    <div class="fade" id="fade"></div>
+
+    <script type="module" src="/src/demo/main.js"></script>
+  </body>
+</html>
