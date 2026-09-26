@@ -5,6 +5,8 @@ A WebGL Minecraft world viewer and editor, built with React, Three.js and Zustan
 Rendr began in 2024 as a real-time world viewer. In 2026 it was refreshed with
 Rendr Studio, an editing UI built around an AI architect flow.
 
+![Rendr Studio building a lighthouse from a blueprint](docs/media/lighthouse.gif)
+
 ## Rendr Studio
 
 `studio.html` holds the Studio UI: WorldEdit-style selection, a build log for
@@ -15,6 +17,10 @@ timeline in `src/studio/scenarios/`:
 - `?scene=lighthouse`: build a lighthouse and keeper's cottage on a sea cliff
 - `?scene=riverside`: open a world file, find an existing base, extend it
 - `?scene=mountain`: carve a hideout into a cliff face
+
+| Opening a world | Carving into a cliff |
+|---|---|
+| ![Chunks streaming in while a world file opens](docs/media/riverside.gif) | ![Blocks excavated from a cliff face, then a glazed facade built](docs/media/mountain.gif) |
 
 ## Viewer
 
