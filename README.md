@@ -1,20 +1,38 @@
-# Gemini Minecraft Viewer
+# Rendr
 
-A real-time WebGL Minecraft World Viewer built with **React**, **Three.js**, and **Zustand**.
+A WebGL Minecraft world viewer and editor, built with React, Three.js and Zustand.
 
-## Features
+Rendr began in 2024 as a real-time world viewer. In 2026 it was refreshed with
+Rendr Studio, an editing UI built around an AI architect flow.
 
-- **Isometric RTS-Style Controls**:
-  - WASD Movement
-  - Edge Scrolling
-  - Drag-to-Pan (Left Click)
-  - Gizmo Cube for Rotation (Top Right)
-- **Advanced Geometry**: Supports standard blocks, stairs, slabs, fluids, and custom models.
-- **Texture Atlas**: Dynamic runtime texture packing.
+## Rendr Studio
+
+`studio.html` holds the Studio UI: WorldEdit-style selection, a build log for
+the architect, blueprint previews, and a review step that marks up rendered
+viewpoints. Three scenarios show the flow end to end. Each one runs from a
+timeline in `src/studio/scenarios/`:
+
+- `?scene=lighthouse`: build a lighthouse and keeper's cottage on a sea cliff
+- `?scene=riverside`: open a world file, find an existing base, extend it
+- `?scene=mountain`: carve a hideout into a cliff face
+
+## Viewer
+
+The original viewer (`index.html`) renders chunks with an isometric RTS-style
+camera:
+
+- WASD movement, edge scrolling, drag-to-pan, and a gizmo cube for rotation
+- Standard blocks, stairs, slabs, fluids and custom models
+- A texture atlas packed at runtime
 
 ## Development
 
-1. Install dependencies: `npm install`
-2. Run dev server: `npm run dev`
+```
+npm install
+npm run dev
+```
 
-See `documentation.md` for detailed architecture.
+Then open `/` for the viewer or `/studio.html` for the Studio.
+
+See `documentation.md` for the viewer's architecture, and `docs/landscape.md`
+for related open-source projects.

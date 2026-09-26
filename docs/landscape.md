@@ -1,6 +1,6 @@
 # Open-source landscape
 
-A survey of related open-source projects, taken on 2026-09-25. Star counts and activity dates are approximate.
+A survey of related open-source projects, taken during the 2026 refresh. Star counts and activity dates are approximate.
 
 ## Closest to our idea (AI that builds in a browser-rendered world)
 
