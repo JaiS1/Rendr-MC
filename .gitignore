@@ -27,4 +27,4 @@ dist-ssr
 temp_assets
 
 # Rendered demo video
-/rendr-demo.mp4
+/rendr-demo*.mp4

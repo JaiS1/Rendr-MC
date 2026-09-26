@@ -184,6 +184,37 @@ export async function createScene(canvas) {
   }
   buildOrder.sort((a, b) => a.t0 - b.t0);
 
+  // Blueprint ghost: the agent's plan drawn in the world before blocks land.
+  const late = new Set(["lanternCore", "path"]);
+  const ghosts = [];
+  for (const [key, list] of Object.entries(world.build)) {
+    const p = phaseTimes[key];
+    list.forEach((b, i) => {
+      const src = byType[b.type].build.find((x) => x.x === b.x && x.y === b.y && x.z === b.z);
+      const tg = late.has(key)
+        ? p.t0 - 0.9 + (i / list.length) * 0.5
+        : 12.5 + ((b.y - G) / 28) * 1.3 + ((b.x + b.z) & 3) * 0.03;
+      ghosts.push({ ...b, tg, t0: src.t0, overlay: TYPES[b.type].overlay });
+    });
+  }
+  const ghostMat = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    uniforms: { color: { value: new THREE.Color("#8cb8f0") }, opacity: { value: 1 } },
+    vertexShader: `varying vec2 vUv; void main(){ vUv = uv; vec4 p = vec4(position, 1.0);
+      #ifdef USE_INSTANCING
+        p = instanceMatrix * p;
+      #endif
+      gl_Position = projectionMatrix * modelViewMatrix * p; }`,
+    fragmentShader: `uniform vec3 color; uniform float opacity; varying vec2 vUv;
+      void main(){ float e = min(min(vUv.x, 1.0 - vUv.x), min(vUv.y, 1.0 - vUv.y));
+        float line = 1.0 - smoothstep(0.035, 0.07, e);
+        gl_FragColor = vec4(color, mix(0.16, 0.95, line) * opacity); }`,
+  });
+  const ghostMesh = new THREE.InstancedMesh(boxGeo, ghostMat, ghosts.length);
+  ghostMesh.renderOrder = 5;
+  ghostMesh.frustumCulled = false;
+
   const meshes = [];
   for (const [type, { stat, build }] of Object.entries(byType)) {
     const def = TYPES[type];
@@ -297,25 +328,36 @@ export async function createScene(canvas) {
   beams.position.copy(lampLight.position);
   beams.visible = false;
   scene.add(beams);
+  scene.add(ghostMesh);
 
   // Selection box (WorldEdit-style) and the build "cursor" cube
   const selection = new THREE.Group();
   const selEdges = new THREE.LineSegments(
     new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)),
-    new THREE.LineBasicMaterial({ color: 0x6ee7b7, transparent: true, opacity: 1, fog: false, depthTest: false })
+    new THREE.LineBasicMaterial({ color: 0xf4b64a, transparent: true, opacity: 1, fog: false, depthTest: false })
   );
   selEdges.renderOrder = 10;
   const selFill = new THREE.Mesh(
     new THREE.BoxGeometry(1, 1, 1),
-    new THREE.MeshBasicMaterial({ color: 0x6ee7b7, transparent: true, opacity: 0.08, depthWrite: false, fog: false })
+    new THREE.MeshBasicMaterial({ color: 0xf4b64a, transparent: true, opacity: 0.08, depthWrite: false, fog: false })
   );
   selection.add(selFill, selEdges);
   selection.visible = false;
   scene.add(selection);
 
+  const dimGeo = new THREE.BufferGeometry();
+  dimGeo.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(3 * 2 * 3 * 7), 3));
+  const dims = new THREE.LineSegments(
+    dimGeo,
+    new THREE.LineBasicMaterial({ color: 0xf4b64a, transparent: true, fog: false, depthTest: false })
+  );
+  dims.renderOrder = 10;
+  dims.frustumCulled = false;
+  scene.add(dims);
+
   const head = new THREE.LineSegments(
     new THREE.EdgesGeometry(new THREE.BoxGeometry(1.08, 1.08, 1.08)),
-    new THREE.LineBasicMaterial({ color: 0x6ee7b7, fog: false, depthTest: false, transparent: true })
+    new THREE.LineBasicMaterial({ color: 0xf4b64a, fog: false, depthTest: false, transparent: true })
   );
   head.renderOrder = 11;
   head.visible = false;
@@ -332,9 +374,13 @@ export async function createScene(canvas) {
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
 
-  let viewW = 1, viewH = 1;
+  let viewW = 1, viewH = 1, panelW = 0;
+  function setPanelShift(k) {
+    camera.setViewOffset(viewW, viewH, (panelW * k) / 2, 0, viewW, viewH);
+    camera.updateProjectionMatrix();
+  }
   function resize(w, h, rightPanel) {
-    viewW = w; viewH = h;
+    viewW = w; viewH = h; panelW = rightPanel;
     renderer.setSize(w, h, false);
     composer.setSize(w, h);
     camera.aspect = w / h;
@@ -373,6 +419,16 @@ export async function createScene(canvas) {
       });
       mesh.instanceMatrix.needsUpdate = true;
     }
+    ghosts.forEach((g, i) => {
+      const k = clamp01((t - g.tg) / 0.25);
+      const gone = t >= g.t0 + 0.15;
+      const s = k <= 0 || gone ? 0.0001 : 0.6 + 0.4 * smooth(k);
+      tmp.position.set(g.x + 0.5, g.y + (g.overlay ? 1.04 : 0.5), g.z + 0.5);
+      tmp.scale.set(s, g.overlay ? s * 0.08 : s, s);
+      tmp.updateMatrix();
+      ghostMesh.setMatrixAt(i, tmp.matrix);
+    });
+    ghostMesh.instanceMatrix.needsUpdate = true;
     let placed = 0;
     for (const b of buildOrder) {
       if (b.t0 <= t) { placed++; latest = b; } else break;
@@ -426,17 +482,47 @@ export async function createScene(canvas) {
     camera.position.copy(cam.position);
     camera.lookAt(cam.target);
     sky.position.copy(camera.position);
-    return { placed, total: buildOrder.length };
+    return { placed, total: buildOrder.length, latest: building && latest ? latest.type : null };
   }
 
-  function setSelection(box) {
-    if (!box) { selection.visible = false; return; }
+  // Architectural dimension lines: extension lines, a dimension line, and
+  // 45-degree ticks at each end. Returns label anchors for the overlay.
+  function setDims(box, alpha) {
+    const { min, max } = box;
+    const o = 1.6, e = 0.5, tk = 0.45;
+    const arr = dimGeo.attributes.position.array;
+    let i = 0;
+    const seg = (a, b) => { arr.set(a, i); arr.set(b, i + 3); i += 6; };
+    const dim = (a, b, ext, tick) => {
+      const A = a.map((v, j) => v + ext[j]), B = b.map((v, j) => v + ext[j]);
+      seg(a.map((v, j) => v + ext[j] * 0.15), a.map((v, j) => v + ext[j] * (1 + e / o)));
+      seg(b.map((v, j) => v + ext[j] * 0.15), b.map((v, j) => v + ext[j] * (1 + e / o)));
+      seg(A, B);
+      seg(A.map((v, j) => v - tick[j]), A.map((v, j) => v + tick[j]));
+      seg(B.map((v, j) => v - tick[j]), B.map((v, j) => v + tick[j]));
+      return A.map((v, j) => (v + B[j]) / 2);
+    };
+    const labels = {
+      w: dim([min[0], min[1], max[2]], [max[0], min[1], max[2]], [0, 0, o], [tk, 0, tk]),
+      d: dim([max[0], min[1], min[2]], [max[0], min[1], max[2]], [o, 0, 0], [tk, 0, tk]),
+      h: dim([max[0], min[1], max[2]], [max[0], max[1], max[2]], [o, 0, o], [tk, tk, 0]),
+    };
+    arr.fill(0, i);
+    dimGeo.attributes.position.needsUpdate = true;
+    dims.material.opacity = alpha;
+    dims.visible = alpha > 0.01;
+    return labels;
+  }
+
+  function setSelection(box, dimAlpha = 0) {
+    if (!box) { selection.visible = false; dims.visible = false; return null; }
     const { min, max, alpha = 1 } = box;
     selection.visible = true;
     selection.position.set((min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2);
     selection.scale.set(Math.max(0.01, max[0] - min[0]), Math.max(0.01, max[1] - min[1]), Math.max(0.01, max[2] - min[2]));
     selEdges.material.opacity = alpha;
-    selFill.material.opacity = 0.07 * alpha;
+    selFill.material.opacity = 0.03 * alpha;
+    return setDims(box, dimAlpha);
   }
 
   function render() {
@@ -457,12 +543,12 @@ export async function createScene(canvas) {
     renderer.setPixelRatio(1);
     renderer.setSize(w * 2, h * 2, false);
     sky.position.copy(thumbCam.position);
-    const selWas = selection.visible, headWas = head.visible;
-    selection.visible = head.visible = false;
+    const selWas = selection.visible, headWas = head.visible, dimsWas = dims.visible;
+    selection.visible = head.visible = dims.visible = false;
     renderer.render(scene, thumbCam);
     const ctx = out.getContext("2d");
     ctx.drawImage(renderer.domElement, 0, 0, w * 2, h * 2, 0, 0, w, h);
-    selection.visible = selWas; head.visible = headWas;
+    selection.visible = selWas; head.visible = headWas; dims.visible = dimsWas;
     renderer.setPixelRatio(pr);
     renderer.setSize(size.x, size.y, false);
     composer.setSize(size.x, size.y);
@@ -478,5 +564,5 @@ export async function createScene(canvas) {
   }
 
   const counts = Object.fromEntries(Object.entries(world.build).map(([k, l]) => [k, l.length]));
-  return { resize, update, render, setSelection, snapshot, project, counts };
+  return { resize, update, render, setSelection, setPanelShift, snapshot, project, counts };
 }
