@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rendr Studio</title>
+  </head>
+  <body>
+    <canvas id="view"></canvas>
+
+    <header class="topbar" id="topbar">
+      <div class="brand">
+        <svg class="mark" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 2.5 20.5 7.25v9.5L12 21.5l-8.5-4.75v-9.5z" />
+          <path d="M3.5 7.25 12 12l8.5-4.75M12 12v9.5" />
+        </svg>
+        <span class="wordmark">rendr</span>
+        <span class="divider"></span>
+        <span class="world" id="worldName">Survival Island</span>
+        <span class="tag" id="worldTag">Java 1.21</span>
+      </div>
+      <div class="meters">
+        <span class="placed" id="placed"><b>+0</b> placed</span>
+        <span class="meter-group">
+          <span><b id="fps">60</b> fps</span>
+          <span><b>1,024</b> chunks</span>
+          <span><b>4.19M</b> blocks</span>
+        </span>
+      </div>
+    </header>
+
+    <nav class="toolbar" id="toolbar" aria-label="Tools">
+      <button data-tool="select" class="active" aria-label="Select">
+        <svg viewBox="0 0 24 24"><path d="M6 4l12 7-5.2 1.4L10 18z" /></svg>
+      </button>
+      <button data-tool="place" aria-label="Place">
+        <svg viewBox="0 0 24 24"><path d="M12 3.5 19.5 7.7v8.6L12 20.5l-7.5-4.2V7.7z M4.5 7.7 12 12l7.5-4.3M12 12v8.5" /></svg>
+      </button>
+      <button data-tool="brush" aria-label="Brush">
+        <svg viewBox="0 0 24 24"><path d="M14.5 4.5l5 5-7.5 7.5H7v-5z M11.5 7.5l5 5" /></svg>
+      </button>
+      <button data-tool="fill" aria-label="Fill">
+        <svg viewBox="0 0 24 24"><path d="M5 12l6.5-6.5L18 12l-6.5 6.5z M5 12h13" /></svg>
+      </button>
+      <span class="sep"></span>
+      <button data-tool="ai" id="aiTool" aria-label="Architect">
+        <svg viewBox="0 0 24 24"><path d="M12 3.5l1.7 5 5 1.7-5 1.7-1.7 5-1.7-5-5-1.7 5-1.7z M18 15.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z" /></svg>
+      </button>
+      <span class="tooltip" id="aiTip">Architect <kbd>A</kbd></span>
+    </nav>
+
+    <div class="dim-label" id="dimW"></div>
+    <div class="dim-label" id="dimD"></div>
+    <div class="dim-label" id="dimH"></div>
+
+    <aside class="panel" id="panel">
+      <div class="titleblock">
+        <div class="tb-top">
+          <div class="tb-name">
+            <svg viewBox="0 0 24 24"><path d="M12 3.5l1.7 5 5 1.7-5 1.7-1.7 5-1.7-5-5-1.7 5-1.7z" /></svg>
+            Architect
+          </div>
+          <span class="status" id="agentStatus"><i></i><span>Idle</span></span>
+        </div>
+        <dl class="tb-grid">
+          <div><dt>Project</dt><dd id="tb-project">Lighthouse</dd></div>
+          <div><dt>Site</dt><dd id="tb-site">Cliff plateau</dd></div>
+          <div><dt>Scale</dt><dd id="tb-scale">1 block = 1 m</dd></div>
+          <div><dt>Elapsed</dt><dd id="elapsed">0:00.0</dd></div>
+        </dl>
+      </div>
+      <div class="feed-wrap"><div class="feed" id="feed"></div></div>
+    </aside>
+
+    <div class="command" id="command">
+      <div class="cmd-row">
+        <svg class="cmd-spark" viewBox="0 0 24 24"><path d="M12 3.5l1.7 5 5 1.7-5 1.7-1.7 5-1.7-5-5-1.7 5-1.7z" /></svg>
+        <div class="cmd-input" id="cmdInput"><span id="promptText" class="placeholder">Describe what to build here…</span><span class="caret" id="caret"></span></div>
+        <button class="send" id="sendBtn" aria-label="Build">
+          <span>Build</span>
+          <svg viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6" /></svg>
+        </button>
+      </div>
+      <div class="cmd-foot">
+        <span class="ctx"><i></i><span id="cmdCtx">Selection 21 × 17 × 28</span></span>
+        <span id="cmdFooter">Cliff plateau · 9,996 blocks of space</span>
+      </div>
+    </div>
+
+    <div class="hotbar" id="hotbar">
+      <div class="hot-name" id="hotName">Stone Bricks</div>
+      <div class="slots" id="slots"></div>
+    </div>
+
+    <div class="corner" id="corner">
+      <span class="compass" id="compass">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 5l2.2 7H9.8z" class="n" /><path d="M12 19l-2.2-7h4.4z" /></svg>
+        <span id="coords">3, 14, 1</span>
+      </span>
+      <span class="clock">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" /><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8" /></svg>
+        <span id="clock">12:00</span>
+      </span>
+    </div>
+
+    <div class="cursor" id="cursor">
+      <svg viewBox="0 0 24 24"><path d="M5 3l14 9.6-6.2 1.3L9.6 20z" /></svg>
+      <span class="ripple" id="ripple"></span>
+    </div>
+
+    <div class="card title-card" id="titleCard">
+      <div class="big">rendr</div>
+      <div class="sub">An AI architect for Minecraft worlds, in the browser.</div>
+    </div>
+    <div class="card end-card" id="endCard">
+      <div class="big">rendr</div>
+      <div class="sub">Describe it. Watch it get built. Let it check its own work.</div>
+      <ul class="facts">
+        <li><b>WebGL</b>chunk renderer</li>
+        <li><b>.mca</b>world import</li>
+        <li><b>Tool-use</b>agent</li>
+        <li><b>Vision</b>self-review</li>
+      </ul>
+      <div class="url">github.com/jais1/rendr-mc</div>
+    </div>
+    <div class="fade" id="fade"></div>
+
+    <script type="module" src="/src/studio/main.js"></script>
+  </body>
+</html>
